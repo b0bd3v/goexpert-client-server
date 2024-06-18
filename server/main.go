@@ -1,13 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"net/http"
+	"time"
 )
-
-const cotacaoURL string = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 
 func main() {
 	var err error
@@ -25,7 +27,6 @@ func main() {
 }
 
 func startServer() error {
-
 	http.HandleFunc("/quotation", mainHandler)
 	err := http.ListenAndServe(":8080", nil)
 
@@ -37,18 +38,41 @@ func startServer() error {
 }
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
-	//log.Println("GET /cotacao")
-	//
-	//err := saveQuotationToDB()
-	//
-	//if err != nil {
-	//	return err
-	//}
+
+	err := api_quotation_request()
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	w.WriteHeader(http.StatusOK)
 }
 
-//func saveQuotationToDB() error {}
+func api_quotation_request() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
+
+	if err != nil {
+		return err
+	}
+
+	response, err := http.DefaultClient.Do(request)
+	defer response.Body.Close()
+
+	if err != nil {
+		return err
+	}
+
+	var api_response map[string]Quotation
+
+	err = json.NewDecoder(response.Body).Decode(&api_response)
+
+	fmt.Printf("---> %+v\n", api_response)
+
+	return nil
+}
 
 func createDataBase() error {
 	db, err := sql.Open("sqlite3", "file:goexpert.db")
@@ -60,7 +84,7 @@ func createDataBase() error {
 	defer db.Close()
 
 	_, err = db.Exec(`
-	CREATE TABLE IF NOT EXISTS cotacao(
+	CREATE TABLE IF NOT EXISTS quotation(
 		code TEXT, 
 		code_in TEXT, 
 		name TEXT, 
