@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -17,6 +18,12 @@ func main() {
 	}
 
 	fmt.Println(bid)
+
+	err = saveInFile(bid)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func api_request() (Bid, error) {
@@ -43,6 +50,24 @@ func api_request() (Bid, error) {
 	}
 
 	return bid, nil
+}
+
+func saveInFile(bid Bid) error {
+	file, err := os.Create("cotacao.txt")
+
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	_, err = file.WriteString("Dólar: " + bid.Bid + "\n")
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type Bid struct {
