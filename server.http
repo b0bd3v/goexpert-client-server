@@ -1,2 +1,6 @@
 GET http://localhost:8080/quotation
 ```
+###
+
+GET https://economia.awesomeapi.com.br/json/last/USD-BRL
+```

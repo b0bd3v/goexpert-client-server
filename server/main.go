@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"net/http"
@@ -19,6 +18,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	log.Printf("Server running on port 8080")
 	err = startServer()
 
 	if err != nil {
@@ -38,44 +38,66 @@ func startServer() error {
 }
 
 func mainHandler(w http.ResponseWriter, r *http.Request) {
-
-	err := api_quotation_request()
+	quotation, err := api_quotation_request()
 
 	if err != nil {
-		log.Fatal(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	err = createQuotation(r.Context(), quotation.Quotation)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(ApiResponse{Bid: quotation.Quotation.Bid})
 }
 
-func api_quotation_request() error {
+func api_quotation_request() (USDBRL, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
 
 	if err != nil {
-		return err
+		return USDBRL{}, err
 	}
 
 	response, err := http.DefaultClient.Do(request)
 	defer response.Body.Close()
 
 	if err != nil {
-		return err
+		return USDBRL{}, err
 	}
 
-	var api_response map[string]Quotation
+	var api_response USDBRL
 
 	err = json.NewDecoder(response.Body).Decode(&api_response)
 
-	fmt.Printf("---> %+v\n", api_response)
+	if err != nil {
+		return USDBRL{}, err
+	}
 
-	return nil
+	return api_response, nil
+}
+
+func dbConnection() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", "file:goexpert.db")
+
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func createDataBase() error {
-	db, err := sql.Open("sqlite3", "file:goexpert.db")
+	db, err := dbConnection()
 
 	if err != nil {
 		return err
@@ -105,6 +127,64 @@ func createDataBase() error {
 	return nil
 }
 
+func createQuotation(ctx context.Context, quotation Quotation) error {
+	db, err := dbConnection()
+
+	if err != nil {
+		return err
+	}
+
+	defer db.Close()
+
+	query, err := db.Prepare(`
+		INSERT INTO quotation(
+			code,
+			code_in,
+			name,
+			high,
+			low,
+			var_bid,
+			pct_change,
+			bid,
+			ask,
+			timestamp,
+			create_date
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+
+	if err != nil {
+		return err
+	}
+
+	databaseContext, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+
+	_, err = query.ExecContext(
+		databaseContext,
+		quotation.Code,
+		quotation.CodeIn,
+		quotation.Name,
+		quotation.High,
+		quotation.Low,
+		quotation.VarBid,
+		quotation.PctChange,
+		quotation.Bid,
+		quotation.Ask,
+		quotation.Timestamp,
+		quotation.CreateDate,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type USDBRL struct {
+	Quotation Quotation `json:"USDBRL"`
+}
+
 type Quotation struct {
 	Code       string `json:"code"`
 	CodeIn     string `json:"codein"`
@@ -117,4 +197,12 @@ type Quotation struct {
 	Ask        string `json:"ask"`
 	Timestamp  string `json:"timestamp"`
 	CreateDate string `json:"create_date"`
+}
+
+type ApiResponse struct {
+	Bid string `json:"bid"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error"`
 }
