@@ -42,16 +42,14 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-		return
+		panic(err)
 	}
 
 	err = createQuotation(r.Context(), quotation.Quotation)
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
-		return
+		panic(err)
 	}
 
 	w.WriteHeader(http.StatusOK)
